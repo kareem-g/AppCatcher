@@ -85,6 +85,12 @@ final class InstalledAppsService {
     var userBytes: Int64 { items.filter { $0.kind == .user }.reduce(0) { $0 + $1.totalBytes } }
     var userCount: Int { items.filter { $0.kind == .user }.count }
 
+    /// bundleID → display name, for services that only know bundle IDs
+    /// (e.g. containers found by the worse_query scan).
+    var nameByBundleID: [String: String] {
+        Dictionary(items.map { ($0.bundleID, $0.name) }, uniquingKeysWith: { a, _ in a })
+    }
+
     func load() async {
         guard !loaded else { return }
         loaded = true

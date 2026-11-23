@@ -6,6 +6,7 @@ struct CleanerView: View {
     @Environment(AppModel.self) private var model
 
     @State private var confirming = false
+    @State private var pendingClean: OtherAppsService.Entry?
 
     private var cache: CacheService { model.cache }
 
@@ -34,12 +35,28 @@ struct CleanerView: View {
                             }
                         }
                     }
+
+                    otherAppsSection
                 }
             }
             .listStyle(.plain)
             .monospacedDigit()
             .navigationTitle("Cleaner")
             .refreshable { await model.rescan() }
+            .task { if model.otherApps.status == .idle { await model.scanOtherApps() } }
+            .confirmationDialog(
+                "Clear caches of \(pendingClean?.name ?? "this app")?",
+                isPresented: Binding(get: { pendingClean != nil }, set: { if !$0 { pendingClean = nil } }),
+                titleVisibility: .visible
+            ) {
+                Button("Clear \(ByteFormat.string(pendingClean?.cacheBytes ?? 0))", role: .destructive) {
+                    if let target = pendingClean {
+                        Task { _ = await model.cleanOtherApp(target) }
+                    }
+                }
+            } message: {
+                Text("Only Caches and temp files are deleted; user data stays. The app may rebuild its cache on next launch.")
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(cache.isAllSelected ? "Deselect All" : "Select All") {
@@ -64,6 +81,67 @@ struct CleanerView: View {
                             Text("Caches rebuild themselves. Web data can sign you out of pages opened inside the app.")
                         }
                 }
+            }
+        }
+    }
+
+    // MARK: Other apps
+
+    @ViewBuilder
+    private var otherAppsSection: some View {
+        let other = model.otherApps
+        switch other.status {
+        case .idle:
+            Section("Other Apps") {
+                Button("Scan Other Apps") { Task { await model.scanOtherApps() } }
+                Text("Uses a published container-manager bug to reach other apps' regenerable caches. Works on iOS 26.0–26.7.2 and 27.2; Apple patched it in 27.3.")
+                    .footnote()
+            }
+
+        case .scanning:
+            Section("Other Apps") {
+                HStack(spacing: 12) {
+                    ProgressView()
+                    Text("Enumerating app containers…").foregroundStyle(.secondary)
+                }
+            }
+
+        case .unavailable(let why):
+            Section("Other Apps") {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Blocked by iOS").font(.headline)
+                    Text(why).foregroundStyle(.secondary).footnote()
+                }
+            }
+
+        case .ready:
+            Section {
+                ForEach(other.entries) { entry in
+                    otherRow(entry)
+                }
+            } header: {
+                Text("Other Apps")
+            } footer: {
+                Text("Via the worse_query container bug (Taj C / forcequit, GPLv3+). Only Caches and temp files are deleted — never Documents, Preferences or the app itself. Patched by Apple in 27.3.")
+                    .footnote()
+            }
+        }
+    }
+
+    private func otherRow(_ entry: OtherAppsService.Entry) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.name).lineLimit(1)
+                Text(entry.bundleID).font(.caption.monospaced()).lineLimit(1)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if model.otherApps.cleaning.contains(entry.id) {
+                ProgressView()
+            } else {
+                Button("Clean") { pendingClean = entry }
+                    .buttonStyle(.bordered)
+                    .disabled(entry.cacheBytes == 0)
             }
         }
     }

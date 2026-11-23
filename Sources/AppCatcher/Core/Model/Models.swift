@@ -177,17 +177,6 @@ enum ActivityKind: String, Codable {
     case verified
     case unlocked
     case imported
-
-    var symbol: String {
-        switch self {
-        case .cleaned: return "sparkles"
-        case .backedUp: return "arrow.down.doc"
-        case .restored: return "arrow.uturn.backward"
-        case .verified: return "checkmark.shield"
-        case .unlocked: return "crown"
-        case .imported: return "square.and.arrow.down.on.square"
-        }
-    }
 }
 
 struct ActivityEvent: Identifiable, Codable {

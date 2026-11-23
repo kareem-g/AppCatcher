@@ -16,8 +16,13 @@ let package = Package(
         ),
     ],
     targets: [
+        // worse_query + pathleak (Taj C / forcequit, GPLv3+): the container
+        // query that issues kernel sandbox extensions onto other apps'
+        // containers. See Core/Services/OtherAppsService.swift for use.
+        .target(name: "WorseQuery"),
         .target(
             name: "AppCatcher",
+            dependencies: ["WorseQuery"],
             swiftSettings: [
                 .swiftLanguageMode(.v5)
             ]

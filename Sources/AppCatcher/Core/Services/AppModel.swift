@@ -13,6 +13,7 @@ final class AppModel {
     let activity: ActivityLog
     let pro: ProService
     let apps: InstalledAppsService
+    let otherApps = OtherAppsService()
 
     var toast: String?
     var showingPaywall = false
@@ -83,6 +84,36 @@ final class AppModel {
     func rescan() async {
         await cache.scan()
         cache.applyHistory(lifetimeReclaimed: settings.lifetimeReclaimed, lastClean: settings.lastCleanAt)
+    }
+
+    // MARK: - Other apps (worse_query; iOS 26–27.2 only)
+
+    func scanOtherApps() async {
+        await otherApps.scan()
+        otherApps.resolveNames(apps.nameByBundleID)
+    }
+
+    @discardableResult
+    func cleanOtherApp(_ entry: OtherAppsService.Entry) async -> Int64 {
+        let freed = await otherApps.clean(entry)
+        if freed > 0 {
+            settings.addReclaimed(freed)
+            activity.record(
+                .cleaned,
+                "Cleared \(ByteFormat.string(freed)) in \(entry.name)",
+                detail: "Caches + temp files of another app",
+                bytes: freed
+            )
+            Haptics.cleaned()
+            toast = "\(ByteFormat.string(freed)) freed from \(entry.name)"
+        } else if freed == 0 {
+            toast = "Nothing to clear in \(entry.name)"
+        } else {
+            Haptics.failed()
+            toast = "iOS refused access — \(OtherAppsService.explain(freed))"
+        }
+        await scanOtherApps()
+        return freed
     }
 
     // MARK: - Backups

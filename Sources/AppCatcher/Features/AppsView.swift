@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Read-only inventory of what is installed on the device.
 ///
@@ -29,7 +30,7 @@ struct AppsView: View {
                     } header: {
                         Text(service.includeSystem ? "All Apps" : "User Apps")
                     } footer: {
-                        Text("Read-only. No app can read or clear another app's files, so the only control per app is Settings › General › iPhone Storage (Offload or Delete).\(syncHint)")
+                        Text("Read-only inventory. The context menu offers Clean Caches (iOS 26.0–26.7.2 / 27.2, via the container bug) and a link to iPhone Storage for everything else.\(syncHint)")
                             .footnote()
                     }
                 }
@@ -86,6 +87,8 @@ struct AppsView: View {
 }
 
 private struct AppRow: View {
+    @Environment(AppModel.self) private var model
+    @State private var pendingClean: OtherAppsService.Entry?
     let item: InstalledAppsService.Item
 
     var body: some View {
@@ -96,16 +99,91 @@ private struct AppRow: View {
                     .font(.caption)
             }
         } label: {
-            Label {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(item.name).lineLimit(1)
                 Text(item.bundleID).font(.caption.monospaced()).lineLimit(1)
-            } icon: {
-                // No icons are reachable without more private API: a plain monogram.
-                Text(String(item.name.prefix(1)).uppercased())
-                    .font(.headline)
-                    .frame(width: 34, height: 34)
-                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
         }
+        .contextMenu {
+            storageButton
+            Button {
+                Haptics.tap()
+                Task { await cleanCaches(for: item) }
+            } label: {
+                Label("Clean Caches…", systemImage: "trash")
+            }
+        }
+        .swipeActions {
+            storageButton
+        }
+        .confirmationDialog(
+            "Clear caches of \(item.name)?",
+            isPresented: Binding(get: { pendingClean != nil }, set: { if !$0 { pendingClean = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Clear \(ByteFormat.string(pendingClean?.cacheBytes ?? 0))", role: .destructive) {
+                if let target = pendingClean {
+                    Task { _ = await model.cleanOtherApp(target) }
+                }
+            }
+        } message: {
+            Text("Only Caches and temp files are deleted; user data stays.")
+        }
+    }
+
+    /// Per-app clean straight from the inventory: scan (once) for containers,
+    /// match this bundle ID, and ask for confirmation before touching it.
+    private func cleanCaches(for item: InstalledAppsService.Item) async {
+        let other = model.otherApps
+        if other.status == .idle || other.status == .scanning {
+            await model.scanOtherApps()
+        }
+        guard let entry = model.otherApps.entries.first(where: { $0.bundleID == item.bundleID }) else {
+            model.toast = "No container found for \(item.name)"
+            return
+        }
+        guard entry.cacheBytes > 0 else {
+            model.toast = "\(item.name) has no cached files"
+            return
+        }
+        pendingClean = entry
+    }
+
+    private var storageButton: some View {
+        Button {
+            Haptics.tap()
+            openIPhoneStorage()
+        } label: {
+            Label("Open iPhone Storage", systemImage: "internaldrive")
+        }
+    }
+
+    /// The only real per-app lever iOS offers: Settings › General › iPhone
+    /// Storage, where Offload/Delete live. iOS 15+ ignores the prefs URL
+    /// scheme from most third-party apps, so every link is an attempt; when
+    /// all of them fail the toast says exactly where to go instead of
+    /// pretending the app opened it.
+    private func openIPhoneStorage() {
+        let links = [
+            "App-Prefs:General&path=STORAGE_MGMT",
+            "App-Prefs:root=General&path=STORAGE_MGMT",
+            "prefs:root=General&path=STORAGE_MGMT",
+            "App-Prefs:",
+        ].compactMap(URL.init(string:))
+
+        func attempt(_ index: Int) {
+            guard index < links.count else {
+                model.toast = "iOS blocks the link — Settings › General › iPhone Storage"
+                return
+            }
+            UIApplication.shared.open(links[index], options: [:]) { opened in
+                if opened {
+                    model.toast = "Check iPhone Storage for \(item.name)"
+                } else {
+                    DispatchQueue.main.async { attempt(index + 1) }
+                }
+            }
+        }
+        attempt(0)
     }
 }

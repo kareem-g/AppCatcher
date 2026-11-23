@@ -61,6 +61,29 @@ and points at Settings › General › iPhone Storage for offloading other apps.
 That explanation is in onboarding, on the dashboard, and in
 Settings › Why only this app's files.
 
+### Other apps' caches (experimental)
+
+Since this build is personal and never submitted for review, it also carries
+[worse_query](https://github.com/forcequitOS/worse_query) — Taj C's published
+container-manager bug (GPLv3+, see `LICENSE`) — in `Sources/WorseQuery`. When
+the kernel still accepts the query (iOS 26.0–26.7.2 and 27.2; patched in
+27.3), the Cleaner gains an **Other Apps** section and every Apps row gets a
+**Clean Caches…** action that clears another app's `Library/Caches` and `tmp`
+and nothing else — Documents, Preferences and the rest of Library are never
+touched, so the worst outcome is an app re-downloading its cache.
+
+Requirements and limits:
+
+- An App Group entitlement the signature honours
+  (`group.com.appcatcher.app`, `Support/AppCatcher.entitlements`); a free
+  developer account cannot provision App Groups, so use a paid one.
+- The enumeration step (`pathleak`) brute-forces inodes and is slow on first
+  scan; it is the PoC's own code, verified on device by its author.
+- It cannot be exercised in the iOS simulator (the sim runtime does not
+  reproduce the kernel behaviour); on-device is the only real test. When the
+  bug is unavailable, the UI says exactly which layer refused instead of
+  shipping a fake button.
+
 ## Layout
 
 ```
@@ -68,10 +91,11 @@ Sources/AppCatcher/
   App/          AppCatcherApp, RootView (tabs, toast, paywall, onboarding)
   Core/
     Model/      cache groups, backup records, activity, storage snapshot
-    Services/   CacheService, BackupService, ArchiveKit, Crypto, ProService, AppModel, AppSettings
+    Services/   CacheService, BackupService, ArchiveKit, Crypto, ProService, OtherAppsService, AppModel, AppSettings
     Support/    Sandbox paths, DiskProbe, formatting, haptics, progress box
-  Features/     Dashboard, Cleaner, Backups, Premium, Settings
-Support/Info.plist
-scripts/build-ipa.sh
+  Features/     Dashboard, Cleaner, Backups, Premium, Settings, Apps
+Sources/WorseQuery/   worse_query + pathleak (Taj C / forcequit, GPLv3+)
+Support/Info.plist, AppCatcher.entitlements
+scripts/build-ipa.sh, make-icon.py
 xtool.yml
 ```

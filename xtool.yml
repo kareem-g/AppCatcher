@@ -1,4 +1,5 @@
 version: 1
 bundleID: com.appcatcher.app
 infoPath: Support/Info.plist
+entitlementsPath: Support/AppCatcher.entitlements
 iconPath: Resources/AppIcon.png
