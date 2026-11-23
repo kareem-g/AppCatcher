@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Tab shell, global toast, paywall and first-run story.
+/// Tab shell, global toast, paywall and first-run screen.
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
@@ -9,15 +9,15 @@ struct RootView: View {
         @Bindable var model = model
         TabView(selection: $model.route) {
             DashboardView()
-                .tabItem { Label("Overview", systemImage: "sparkles") }
+                .tabItem { Label("Overview", systemImage: "internaldrive") }
                 .tag(AppModel.Tab.dashboard)
 
             CleanerView()
-                .tabItem { Label("Cleaner", systemImage: "square.3.layers.3d.down.right") }
+                .tabItem { Label("Cleaner", systemImage: "trash") }
                 .tag(AppModel.Tab.cleaner)
 
             BackupsView()
-                .tabItem { Label("Backups", systemImage: "lock.doc") }
+                .tabItem { Label("Backups", systemImage: "archivebox") }
                 .tag(AppModel.Tab.backups)
 
             // The installed-app inventory rides on a private framework. This is
@@ -31,7 +31,6 @@ struct RootView: View {
                 .tabItem { Label("Settings", systemImage: "gearshape") }
                 .tag(AppModel.Tab.settings)
         }
-        .tint(ACTheme.Palette.mint)
         .task { await model.bootstrap() }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
@@ -39,7 +38,16 @@ struct RootView: View {
             Task { await model.autoCleanIfNeeded() }
         }
         .overlay(alignment: .top) { toast }
-        .sheet(isPresented: $model.showingPaywall) { PremiumView() }
+        .sheet(isPresented: $model.showingPaywall) {
+            NavigationStack {
+                PremiumView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Close") { model.showingPaywall = false }
+                        }
+                    }
+            }
+        }
         .fullScreenCover(isPresented: firstRunBinding) { OnboardingView() }
     }
 
@@ -53,111 +61,62 @@ struct RootView: View {
     @ViewBuilder
     private var toast: some View {
         if let text = model.toast {
-            ToastBar(text: text)
+            Text(text)
+                .font(.subheadline.weight(.medium))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.regularMaterial, in: Capsule())
                 .padding(.top, 8)
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .task(id: text) {
                     try? await Task.sleep(for: .seconds(2.6))
-                    withAnimation(ACTheme.Motion.quick) { model.toast = nil }
+                    withAnimation { model.toast = nil }
                 }
                 .allowsHitTesting(false)
         }
     }
 }
 
-/// Three screens that set expectations instead of selling a fantasy.
+/// One screen that sets expectations instead of selling a fantasy.
 struct OnboardingView: View {
     @Environment(AppModel.self) private var model
 
-    private var pages: [Page] {
-        [
-            Page(
-                symbol: "internaldrive",
-                tint: ACTheme.Palette.aqua,
-                title: "See where it all went",
-                body: "AppCatcher measures your container file by file — caches, temp files, WebView storage, logs — and shows you the receipts before touching anything."
-            ),
-            Page(
-                symbol: "lock.doc",
-                tint: ACTheme.Palette.mint,
-                title: "Seal it, then clean it",
-                body: "Back up Documents and app data into one archive, optionally locked with AES-256. Verify any archive later, restore it in a tap, and keep a guarded copy of whatever was there before."
-            ),
-            Page(
-                symbol: "lock.shield",
-                tint: ACTheme.Palette.violet,
-                title: "Honest about iOS",
-                body: "The sandbox means no app can delete another app's caches. AppCatcher cleans what it owns, and points you at iPhone Storage for the rest."
-            ),
-        ]
-    }
-
-    @State private var index = 0
-
     var body: some View {
-        VStack(spacing: ACTheme.Space.xl) {
-            TabView(selection: $index) {
-                ForEach(Array(pages.enumerated()), id: \.offset) { position, page in
-                    VStack(spacing: ACTheme.Space.lg) {
-                        Spacer()
-                        ZStack {
-                            Circle().fill(page.tint.opacity(0.14)).frame(width: 148, height: 148)
-                            Circle().strokeBorder(page.tint.opacity(0.35), lineWidth: 1).frame(width: 108, height: 108)
-                            Image(systemName: page.symbol)
-                                .font(.system(size: 44, weight: .medium))
-                                .foregroundStyle(page.tint)
-                        }
-                        Text(page.title)
-                            .font(ACType.title)
-                            .foregroundStyle(ACTheme.Palette.text)
-                            .multilineTextAlignment(.center)
-                        Text(page.body)
-                            .font(ACType.body)
-                            .foregroundStyle(ACTheme.Palette.textSecondary)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.horizontal, ACTheme.Space.xl)
-                        Spacer()
-                    }
-                    .tag(position)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .always))
-            .indexViewStyle(.page(backgroundDisplayMode: .always))
-
-            ActionButton(
-                title: index == pages.count - 1 ? "Open AppCatcher" : "Continue",
-                systemImage: index == pages.count - 1 ? "arrow.right.circle.fill" : nil,
-                action: advance
-            )
-            .padding(.horizontal, ACTheme.Space.lg)
-
-            Button("Skip tour") { finish() }
-                .font(ACType.caption)
-                .foregroundStyle(ACTheme.Palette.textTertiary)
-                .padding(.bottom, ACTheme.Space.lg)
+        VStack(alignment: .leading, spacing: 28) {
+            Spacer()
+            Text("Welcome to AppCatcher")
+                .font(.largeTitle.bold())
+            feature("internaldrive", "See where it went",
+                    "Caches, temporary files, web storage and logs, measured file by file before anything is deleted.")
+            feature("archivebox", "Back up, then clean",
+                    "Seal Documents and app data into one archive, optionally encrypted. Verify or restore it any time.")
+            feature("lock.shield", "Honest about iOS",
+                    "No app can delete another app's caches. AppCatcher cleans what it owns and points you to iPhone Storage for the rest.")
+            Spacer()
+            Button("Continue", action: finish)
+                .buttonStyle(.borderedProminent)
+                .frame(maxWidth: .infinity)
         }
-        .background(CanvasBackground())
+        .padding(.horizontal, 32)
+        .padding(.bottom, 24)
     }
 
-    private func advance() {
-        Haptics.tap()
-        if index < pages.count - 1 {
-            withAnimation(ACTheme.Motion.standard) { index += 1 }
-        } else {
-            finish()
+    private func feature(_ symbol: String, _ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 16) {
+            Image(systemName: symbol)
+                .font(.title2)
+                .foregroundStyle(.tint)
+                .frame(width: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.headline)
+                Text(detail).font(.subheadline).foregroundStyle(.secondary)
+            }
         }
     }
 
     private func finish() {
+        Haptics.tap()
         model.settings.hasCompletedOnboarding = true
         Task { await model.rescan() }
     }
-}
-
-private struct Page {
-    var symbol: String
-    var tint: Color
-    var title: String
-    var body: String
 }

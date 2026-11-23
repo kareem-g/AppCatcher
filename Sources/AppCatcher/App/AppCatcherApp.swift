@@ -8,6 +8,7 @@ struct AppCatcherApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
+                .tint(.mint)
         }
     }
 }

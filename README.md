@@ -11,7 +11,7 @@ whole build runs on this Linux machine, no macOS or Xcode involved.
 - **Artifact**: `~/Documents/AppCatcher.ipa` (release, signed, 2.6 MB)
 - **Bundle id**: `com.appcatcher.app` (xtool prefixes at sign time)
 - **Profile**: Apple Development, bound to the personal device (UDID stored in your local xtool/Apple account, not committed here), expires a year after issue
-- **Target**: iOS 17+, arm64, dark-first UI, zero warnings
+- **Target**: iOS 17+, arm64, dark mode, native SwiftUI lists, zero warnings
 
 ```bash
 scripts/build-ipa.sh              # rebuild + resign + republish
@@ -70,7 +70,6 @@ Sources/AppCatcher/
     Model/      cache groups, backup records, activity, storage snapshot
     Services/   CacheService, BackupService, ArchiveKit, Crypto, ProService, AppModel, AppSettings
     Support/    Sandbox paths, DiskProbe, formatting, haptics, progress box
-  Design/       theme tokens, glass cards, gauge, buttons, rows
   Features/     Dashboard, Cleaner, Backups, Premium, Settings
 Support/Info.plist
 scripts/build-ipa.sh

@@ -12,65 +12,38 @@ struct AppsView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
+            List {
                 if service.unavailable {
-                    ScrollView {
-                        VStack(spacing: ACTheme.Space.md) {
-                            Card {
-                                EmptyState(
-                                    systemImage: "eye.slash",
-                                    title: "iOS blocked the app list",
-                                    message: "On this iOS version the app-list APIs need entitlements a normal signed app does not carry. The lines below say exactly which layer failed."
-                                )
-                            }
-                            Card(tint: ACTheme.Palette.amber) {
-                                VStack(alignment: .leading, spacing: ACTheme.Space.sm) {
-                                    Text("Diagnostics").eyebrow()
-                                    ForEach(Array(service.diagnostics.rows.enumerated()), id: \.offset) { _, line in
-                                        Text(line)
-                                            .font(.system(size: 11, design: .monospaced))
-                                            .foregroundStyle(ACTheme.Palette.textSecondary)
-                                    }
-                                }
-                            }
-                            Card(tint: ACTheme.Palette.aqua) {
-                                VStack(alignment: .leading, spacing: ACTheme.Space.sm) {
-                                    Text("Why it is blocked").eyebrow()
-                                    Text("On iOS 18 and later, Apple gates the entire installed-app list behind entitlements that only Apple-signed profiles can carry. A personal development certificate cannot hold them, no matter what a resign tool injects — iOS checks the Apple-signed provisioning profile, not the code signature.")
-                                        .font(ACType.caption)
-                                        .foregroundStyle(ACTheme.Palette.textTertiary)
-                                    Text("There is no signed-app API left that lists every app. The inventory only exists on the Apple side (Settings, MDM) or on a trusted computer the phone has been paired to.")
-                                        .font(ACType.caption)
-                                        .foregroundStyle(ACTheme.Palette.textTertiary)
-                                }
-                            }
-                        }
-                        .padding(ACTheme.Space.lg)
-                    }
+                    unavailable
                 } else {
-                    list
+                    Section {
+                        LabeledContent("User apps", value: "\(service.userCount)")
+                        LabeledContent("App data", value: ByteFormat.string(service.userBytes))
+                        if !service.syncSource.isEmpty {
+                            LabeledContent("Source", value: syncCaption)
+                        }
+                    }
+
+                    Section {
+                        ForEach(service.visible) { AppRow(item: $0) }
+                    } header: {
+                        Text(service.includeSystem ? "All Apps" : "User Apps")
+                    } footer: {
+                        Text("Read-only. No app can read or clear another app's files, so the only control per app is Settings › General › iPhone Storage (Offload or Delete).\(syncHint)")
+                            .footnote()
+                    }
                 }
             }
-            .background(CanvasBackground())
+            .listStyle(.plain)
+            .monospacedDigit()
             .navigationTitle("Apps")
-            .navigationBarTitleDisplayMode(.large)
-            .searchable(text: Bindable(service).searchText, prompt: Text("Name or bundle id"))
+            .searchable(text: Bindable(service).searchText, prompt: Text("Name or bundle ID"))
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
+                    Button(service.includeSystem ? "Hide System" : "Show System") {
                         service.includeSystem.toggle()
                         Haptics.select()
-                    } label: {
-                        Image(systemName: service.includeSystem ? "gearshape.2.fill" : "gearshape.2")
                     }
-                }
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        Task { _ = await service.syncRemote() }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .disabled(service.syncSource.isEmpty)
                 }
             }
             .task { await service.load() }
@@ -78,63 +51,37 @@ struct AppsView: View {
         }
     }
 
-    private var list: some View {
-        List {
-            Section {
-                HStack(spacing: ACTheme.Space.md) {
-                    IconBadge(systemImage: "square.grid.2x2", tint: ACTheme.Palette.violet, size: 44)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("\(service.userCount) user apps")
-                            .font(ACType.row)
-                            .foregroundStyle(ACTheme.Palette.text)
-                        Text("\(ByteFormat.string(service.userBytes)) of app data on this iPhone")
-                            .font(ACType.caption)
-                            .foregroundStyle(ACTheme.Palette.textTertiary)
-                    }
-                    Spacer()
-                }
-                .listRowBackground(Color.clear)
+    @ViewBuilder
+    private var unavailable: some View {
+        ContentUnavailableView(
+            "iOS Blocked the App List",
+            systemImage: "eye.slash",
+            description: Text("The app-list APIs need entitlements a normally signed app does not carry. The lines below show which layer failed.")
+        )
+        .listRowSeparator(.hidden)
 
-                if !service.syncSource.isEmpty {
-                    HStack(spacing: 6) {
-                        Image(systemName: service.syncSource == "device" ? "iphone" : "desktopcomputer")
-                            .font(.system(size: 11))
-                            .foregroundStyle(ACTheme.Palette.mint)
-                        Text(syncCaption)
-                            .font(ACType.caption)
-                            .foregroundStyle(ACTheme.Palette.textTertiary)
-                        Spacer()
-                    }
-                    .padding(.top, 4)
-                    .listRowBackground(Color.clear)
-                }
-            }
-
-            Section {
-                ForEach(service.visible) { item in
-                    AppRow(item: item)
-                        .listRowBackground(ACTheme.Palette.surface.opacity(0.6))
-                }
-            } header: {
-                Text(service.includeSystem ? "All apps" : "User apps").eyebrow()
-            } footer: {
-                Text("Read-only. iOS gives no app the power to read or clear another app's files, so the only lever per app is Settings › General › iPhone Storage (Offload or Delete). Sizes are what the system reports for each bundle.\(syncHint)")
+        Section("Diagnostics") {
+            ForEach(Array(service.diagnostics.rows.enumerated()), id: \.offset) { _, line in
+                Text(line).font(.footnote.monospaced()).foregroundStyle(.secondary)
             }
         }
-        .scrollContentBackground(.hidden)
+
+        Section("Why") {
+            Text("Since iOS 18, the installed-app list sits behind entitlements only Apple-signed profiles can carry. A personal development certificate cannot hold them, whatever a resigning tool injects.")
+            Text("No signed-app API lists every app any more. The list only exists in Settings, in MDM, or on a computer the iPhone is paired with.")
+        }
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
     }
 
     private var syncCaption: String {
-        var base = "Synced from your computer"
+        var base = service.syncSource == "device" ? "This iPhone" : "Your computer"
         if let date = service.syncedAt { base += " · \(TimeFormat.ago(date))" }
         return base
     }
 
     private var syncHint: String {
-        guard service.syncSource == "device" else {
-            return " \nPull to refresh, or tap ↻, when the iPhone is plugged into the computer the inventory is generated there and synced here."
-        }
-        return ""
+        service.syncSource == "device" ? "" : "\n\nPull to refresh while the iPhone is connected to the computer that generates the list."
     }
 }
 
@@ -142,50 +89,23 @@ private struct AppRow: View {
     let item: InstalledAppsService.Item
 
     var body: some View {
-        HStack(spacing: ACTheme.Space.md) {
-            monogram
-            VStack(alignment: .leading, spacing: 3) {
-                Text(item.name)
-                    .font(ACType.row)
-                    .foregroundStyle(ACTheme.Palette.text)
-                    .lineLimit(1)
-                Text(item.bundleID)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(ACTheme.Palette.textTertiary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: ACTheme.Space.sm)
-            VStack(alignment: .trailing, spacing: 4) {
+        LabeledContent {
+            VStack(alignment: .trailing, spacing: 2) {
                 Text(ByteFormat.string(item.totalBytes))
-                    .font(ACType.footnote)
-                    .monospacedDigit()
-                    .foregroundStyle(ACTheme.Palette.textSecondary)
-                HStack(spacing: 4) {
-                    if item.kind != .user {
-                        Chip(text: item.kind.rawValue, tint: ACTheme.Palette.textTertiary)
-                    }
-                    Text("v\(item.version)")
-                        .font(ACType.caption)
-                        .foregroundStyle(ACTheme.Palette.textTertiary)
-                }
+                Text(item.kind == .user ? "v\(item.version)" : item.kind.rawValue)
+                    .font(.caption)
+            }
+        } label: {
+            Label {
+                Text(item.name).lineLimit(1)
+                Text(item.bundleID).font(.caption.monospaced()).lineLimit(1)
+            } icon: {
+                // No icons are reachable without more private API: a plain monogram.
+                Text(String(item.name.prefix(1)).uppercased())
+                    .font(.headline)
+                    .frame(width: 34, height: 34)
+                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
         }
-        .padding(.vertical, 4)
-    }
-
-    /// No app icons are reachable without more private API, so rows carry a
-    /// stable monogram whose hue is derived from the bundle id.
-    private var monogram: some View {
-        let hue = Double(abs(item.bundleID.hashValue) % 360) / 360
-        return ZStack {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(hue: hue, saturation: 0.55, brightness: 0.85).opacity(0.18))
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color(hue: hue, saturation: 0.55, brightness: 0.85).opacity(0.35), lineWidth: 1)
-            Text(String(item.name.prefix(1)).uppercased())
-                .font(.system(size: 15, weight: .bold, design: .rounded))
-                .foregroundStyle(Color(hue: hue, saturation: 0.5, brightness: 0.95))
-        }
-        .frame(width: 38, height: 38)
     }
 }

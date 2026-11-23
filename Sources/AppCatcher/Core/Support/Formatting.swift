@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 
 /// Byte and date rendering used across the app.
 ///
@@ -37,6 +37,13 @@ enum ByteFormat {
     }
 }
 
+extension View {
+    /// Section footers and helper text: small and secondary, like Settings.
+    func footnote() -> some View {
+        font(.footnote).foregroundStyle(.secondary)
+    }
+}
+
 enum TimeFormat {
     private static let relative: RelativeDateTimeFormatter = {
         let f = RelativeDateTimeFormatter()
@@ -51,7 +58,12 @@ enum TimeFormat {
         return f
     }()
 
-    static func ago(_ date: Date) -> String { relative.localizedString(for: date, relativeTo: Date()) }
+    /// "just now" under a minute; otherwise "5 min. ago". Never "in 0 sec.".
+    static func ago(_ date: Date) -> String {
+        let now = Date()
+        if now.timeIntervalSince(date) < 60 { return "just now" }
+        return relative.localizedString(for: date, relativeTo: now)
+    }
     static func exact(_ date: Date) -> String { clock.string(from: date) }
 
     static func duration(_ seconds: Double) -> String {
